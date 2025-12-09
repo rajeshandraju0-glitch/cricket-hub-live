@@ -16,7 +16,7 @@ const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
+    if (user && role) {
       if (role === 'superadmin') {
         navigate('/superadmin');
       } else if (role === 'admin') {
