@@ -19,39 +19,11 @@ const Subscribe = () => {
       return;
     }
 
-    setLoading(true);
-    
-    // Create subscription (in production, integrate with Razorpay/Stripe)
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 30);
-
-    const { error } = await supabase
-      .from('viewer_subscriptions')
-      .insert({
-        user_id: user.id,
-        amount: 20.00,
-        currency: 'INR',
-        transaction_id: `TXN_${Date.now()}`,
-        start_date: new Date().toISOString(),
-        expiry_date: expiryDate.toISOString(),
-        is_active: true
-      });
-
-    setLoading(false);
-
-    if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Subscription failed',
-        description: error.message
-      });
-    } else {
-      toast({
-        title: 'Subscription activated!',
-        description: 'You can now watch live matches.'
-      });
-      navigate('/matches');
-    }
+    // Payment integration required - show coming soon message
+    toast({
+      title: 'Payment Integration Required',
+      description: 'Stripe/Razorpay payment integration needs to be configured by the administrator. Please contact support.',
+    });
   };
 
   const features = [
