@@ -28,29 +28,21 @@ import {
 } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-
-interface Player {
-  id: string;
-  name: string;
-  role: string | null;
-  batting_style: string | null;
-  bowling_style: string | null;
-  jersey_number: number | null;
-}
-
-interface Team {
-  id: string;
-  name: string;
-  short_name: string | null;
-}
+import { 
+  getStoredData, 
+  setStoredData,
+  MockPlayer, 
+  MockTeam,
+  initialPlayers, 
+  initialTeams 
+} from '@/lib/mockData';
 
 const Players = () => {
   const { teamId } = useParams();
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [team, setTeam] = useState<Team | null>(null);
+  const [players, setPlayers] = useState<MockPlayer[]>([]);
+  const [team, setTeam] = useState<MockTeam | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { isAdmin } = useAuth();
@@ -71,32 +63,23 @@ const Players = () => {
     }
   }, [teamId]);
 
-  const fetchTeam = async () => {
-    const { data, error } = await supabase
-      .from('teams')
-      .select('id, name, short_name')
-      .eq('id', teamId)
-      .single();
-
-    if (!error && data) {
-      setTeam(data);
+  const fetchTeam = () => {
+    const allTeams = getStoredData<MockTeam[]>('mock_teams', initialTeams);
+    const foundTeam = allTeams.find(t => t.id === teamId);
+    if (foundTeam) {
+      setTeam(foundTeam);
     }
   };
 
-  const fetchPlayers = async () => {
-    const { data, error } = await supabase
-      .from('players')
-      .select('*')
-      .eq('team_id', teamId)
-      .order('jersey_number', { ascending: true });
-
-    if (!error && data) {
-      setPlayers(data);
-    }
+  const fetchPlayers = () => {
+    const allPlayers = getStoredData<MockPlayer[]>('mock_players', initialPlayers)
+      .filter(p => p.team_id === teamId)
+      .sort((a, b) => (a.jersey_number || 0) - (b.jersey_number || 0));
+    setPlayers(allPlayers);
     setLoading(false);
   };
 
-  const handleCreatePlayer = async () => {
+  const handleCreatePlayer = () => {
     if (!newPlayer.name) {
       toast({
         variant: 'destructive',
@@ -106,54 +89,45 @@ const Players = () => {
       return;
     }
 
-    const { error } = await supabase.from('players').insert({
+    const allPlayers = getStoredData<MockPlayer[]>('mock_players', initialPlayers);
+    const newPlayerData: MockPlayer = {
+      id: `player-${Date.now()}`,
       name: newPlayer.name,
       role: newPlayer.role || null,
       batting_style: newPlayer.batting_style || null,
       bowling_style: newPlayer.bowling_style || null,
       jersey_number: newPlayer.jersey_number ? parseInt(newPlayer.jersey_number) : null,
-      team_id: teamId
-    });
+      team_id: teamId!,
+      created_at: new Date().toISOString()
+    };
 
-    if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to add player'
-      });
-    } else {
-      toast({
-        title: 'Success',
-        description: 'Player added successfully'
-      });
-      setNewPlayer({
-        name: '',
-        role: 'batsman',
-        batting_style: 'right-handed',
-        bowling_style: '',
-        jersey_number: ''
-      });
-      setIsDialogOpen(false);
-      fetchPlayers();
-    }
+    setStoredData('mock_players', [...allPlayers, newPlayerData]);
+
+    toast({
+      title: 'Success',
+      description: 'Player added successfully'
+    });
+    setNewPlayer({
+      name: '',
+      role: 'batsman',
+      batting_style: 'right-handed',
+      bowling_style: '',
+      jersey_number: ''
+    });
+    setIsDialogOpen(false);
+    fetchPlayers();
   };
 
-  const handleDeletePlayer = async (playerId: string) => {
-    const { error } = await supabase.from('players').delete().eq('id', playerId);
+  const handleDeletePlayer = (playerId: string) => {
+    const allPlayers = getStoredData<MockPlayer[]>('mock_players', initialPlayers);
+    const updated = allPlayers.filter(p => p.id !== playerId);
+    setStoredData('mock_players', updated);
 
-    if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to delete player'
-      });
-    } else {
-      toast({
-        title: 'Success',
-        description: 'Player removed successfully'
-      });
-      fetchPlayers();
-    }
+    toast({
+      title: 'Success',
+      description: 'Player removed successfully'
+    });
+    fetchPlayers();
   };
 
   const getRoleBadge = (role: string | null) => {

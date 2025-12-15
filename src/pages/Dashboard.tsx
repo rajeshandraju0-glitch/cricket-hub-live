@@ -14,99 +14,52 @@ import {
   LogOut
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useStats } from "@/hooks/useMockData";
+import { 
+  getStoredData, 
+  MockMatch, 
+  MockTeam, 
+  MockTournament, 
+  MockMatchScore,
+  initialMatches,
+  initialTeams,
+  initialTournaments,
+  initialScores
+} from "@/lib/mockData";
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({
-    tournaments: 0,
-    teams: 0,
-    matches: 0,
-    liveMatches: 0
-  });
   const [recentMatches, setRecentMatches] = useState<any[]>([]);
   const { signOut, user, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const stats = useStats(user?.id);
 
   useEffect(() => {
     if (user && isAdmin) {
-      fetchStats();
       fetchRecentMatches();
     }
   }, [user, isAdmin]);
 
-  const fetchStats = async () => {
-    if (!user) return;
+  const fetchRecentMatches = () => {
+    const tournaments = getStoredData<MockTournament[]>('mock_tournaments', initialTournaments)
+      .filter(t => t.admin_id === user?.id);
+    const tournamentIds = tournaments.map(t => t.id);
 
-    const { count: tournamentsCount } = await supabase
-      .from('tournaments')
-      .select('*', { count: 'exact', head: true })
-      .eq('admin_id', user.id);
+    const allMatches = getStoredData<MockMatch[]>('mock_matches', initialMatches);
+    const allTeams = getStoredData<MockTeam[]>('mock_teams', initialTeams);
+    const allScores = getStoredData<MockMatchScore[]>('mock_scores', initialScores);
 
-    const { data: tournaments } = await supabase
-      .from('tournaments')
-      .select('id')
-      .eq('admin_id', user.id);
+    const matches = allMatches
+      .filter(m => tournamentIds.includes(m.tournament_id))
+      .sort((a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime())
+      .slice(0, 5)
+      .map(match => ({
+        ...match,
+        team_a: allTeams.find(t => t.id === match.team_a_id),
+        team_b: allTeams.find(t => t.id === match.team_b_id),
+        scores: [allScores.find(s => s.match_id === match.id)]
+      }));
 
-    const tournamentIds = tournaments?.map(t => t.id) || [];
-
-    let teamsCount = 0;
-    let matchesCount = 0;
-    let liveCount = 0;
-
-    if (tournamentIds.length > 0) {
-      const { count: tCount } = await supabase
-        .from('teams')
-        .select('*', { count: 'exact', head: true })
-        .in('tournament_id', tournamentIds);
-      teamsCount = tCount || 0;
-
-      const { count: mCount } = await supabase
-        .from('matches')
-        .select('*', { count: 'exact', head: true })
-        .in('tournament_id', tournamentIds);
-      matchesCount = mCount || 0;
-
-      const { count: lCount } = await supabase
-        .from('matches')
-        .select('*', { count: 'exact', head: true })
-        .in('tournament_id', tournamentIds)
-        .eq('status', 'live');
-      liveCount = lCount || 0;
-    }
-
-    setStats({
-      tournaments: tournamentsCount || 0,
-      teams: teamsCount,
-      matches: matchesCount,
-      liveMatches: liveCount
-    });
-  };
-
-  const fetchRecentMatches = async () => {
-    if (!user) return;
-
-    const { data: tournaments } = await supabase
-      .from('tournaments')
-      .select('id')
-      .eq('admin_id', user.id);
-
-    const tournamentIds = tournaments?.map(t => t.id) || [];
-
-    if (tournamentIds.length > 0) {
-      const { data: matches } = await supabase
-        .from('matches')
-        .select(`
-          *,
-          team_a:teams!matches_team_a_id_fkey(name, short_name),
-          team_b:teams!matches_team_b_id_fkey(name, short_name),
-          scores:match_scores(*)
-        `)
-        .in('tournament_id', tournamentIds)
-        .order('match_date', { ascending: false })
-        .limit(5);
-
-      setRecentMatches(matches || []);
-    }
+    setRecentMatches(matches);
   };
 
   const handleSignOut = async () => {
@@ -137,7 +90,7 @@ const Dashboard = () => {
             {[
               { icon: BarChart3, label: "Dashboard", href: "/dashboard", active: true },
               { icon: Trophy, label: "Tournaments", href: "/tournaments" },
-              { icon: Users, label: "Teams", href: "/dashboard/teams" },
+              { icon: Users, label: "Teams", href: "/teams" },
               { icon: Calendar, label: "Matches", href: "/matches" },
               { icon: Settings, label: "Settings", href: "/dashboard/settings" },
             ].map((item) => (
@@ -180,7 +133,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="font-display text-4xl mb-1">DASHBOARD</h1>
-              <p className="text-muted-foreground">Welcome back, Admin</p>
+              <p className="text-muted-foreground">Welcome back, {user?.full_name || 'Admin'}</p>
             </div>
             <Button variant="hero" asChild>
               <Link to="/dashboard/tournaments/new">
@@ -277,9 +230,9 @@ const Dashboard = () => {
               <div className="grid grid-cols-2 gap-4">
                 {[
                   { icon: Trophy, label: "New Tournament", color: "bg-primary", href: "/dashboard/tournaments/new" },
-                  { icon: Users, label: "Add Team", color: "bg-accent", href: "/dashboard/teams/new" },
-                  { icon: Calendar, label: "Schedule Match", color: "bg-gold", href: "/dashboard/matches/new" },
-                  { icon: Play, label: "Start Scoring", color: "bg-live", href: "/live-scoring" },
+                  { icon: Users, label: "Add Team", color: "bg-accent", href: "/teams" },
+                  { icon: Calendar, label: "Schedule Match", color: "bg-gold", href: "/schedule-match" },
+                  { icon: Play, label: "Start Scoring", color: "bg-live", href: "/matches" },
                 ].map((action) => (
                   <Link
                     key={action.label}

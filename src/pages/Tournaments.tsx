@@ -11,29 +11,15 @@ import {
   Calendar,
   MapPin,
   Users,
-  ChevronRight,
-  Filter
+  ChevronRight
 } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-
-interface Tournament {
-  id: string;
-  name: string;
-  description: string | null;
-  logo_url: string | null;
-  start_date: string;
-  end_date: string;
-  venue: string | null;
-  overs_format: number | null;
-  status: string | null;
-  created_at: string;
-}
+import { getStoredData, MockTournament, initialTournaments } from '@/lib/mockData';
 
 const Tournaments = () => {
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [tournaments, setTournaments] = useState<MockTournament[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -43,20 +29,9 @@ const Tournaments = () => {
     fetchTournaments();
   }, [user]);
 
-  const fetchTournaments = async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('tournaments')
-      .select('*')
-      .order('start_date', { ascending: false });
-
-    if (!error && data) {
-      setTournaments(data);
-    }
+  const fetchTournaments = () => {
+    const allTournaments = getStoredData<MockTournament[]>('mock_tournaments', initialTournaments);
+    setTournaments(allTournaments);
     setLoading(false);
   };
 
@@ -83,7 +58,7 @@ const Tournaments = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 pt-24">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

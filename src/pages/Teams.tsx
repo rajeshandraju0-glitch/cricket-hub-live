@@ -26,37 +26,31 @@ import {
   ChevronRight,
   Trophy,
   User,
-  Trash2,
-  Edit
+  Trash2
 } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { 
+  getStoredData, 
+  setStoredData,
+  MockTeam, 
+  MockTournament,
+  MockPlayer,
+  initialTeams, 
+  initialTournaments,
+  initialPlayers
+} from '@/lib/mockData';
 
-interface Team {
-  id: string;
-  name: string;
-  short_name: string | null;
-  logo_url: string | null;
-  captain: string | null;
-  coach: string | null;
-  tournament_id: string;
-  tournament?: {
-    name: string;
-  };
+interface TeamWithTournament extends MockTeam {
+  tournament?: { name: string };
   players_count?: number;
 }
 
-interface Tournament {
-  id: string;
-  name: string;
-}
-
 const Teams = () => {
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [teams, setTeams] = useState<TeamWithTournament[]>([]);
+  const [tournaments, setTournaments] = useState<MockTournament[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -80,65 +74,43 @@ const Teams = () => {
     }
   }, [user]);
 
-  const fetchTournaments = async () => {
-    if (!user) return;
+  const fetchTournaments = () => {
+    const allTournaments = getStoredData<MockTournament[]>('mock_tournaments', initialTournaments)
+      .filter(t => t.admin_id === user?.id);
+    setTournaments(allTournaments);
     
-    const { data, error } = await supabase
-      .from('tournaments')
-      .select('id, name')
-      .eq('admin_id', user.id);
-
-    if (!error && data) {
-      setTournaments(data);
-      
-      const tournamentParam = searchParams.get('tournament');
-      if (tournamentParam) {
-        setSelectedTournament(tournamentParam);
-        setNewTeam(prev => ({ ...prev, tournament_id: tournamentParam }));
-      }
+    const tournamentParam = searchParams.get('tournament');
+    if (tournamentParam) {
+      setSelectedTournament(tournamentParam);
+      setNewTeam(prev => ({ ...prev, tournament_id: tournamentParam }));
     }
   };
 
-  const fetchTeams = async () => {
-    if (!user) return;
+  const fetchTeams = () => {
+    const allTournaments = getStoredData<MockTournament[]>('mock_tournaments', initialTournaments)
+      .filter(t => t.admin_id === user?.id);
+    const tournamentIds = allTournaments.map(t => t.id);
 
-    const { data: userTournaments } = await supabase
-      .from('tournaments')
-      .select('id')
-      .eq('admin_id', user.id);
+    const allTeams = getStoredData<MockTeam[]>('mock_teams', initialTeams)
+      .filter(t => tournamentIds.includes(t.tournament_id));
+    
+    const allPlayers = getStoredData<MockPlayer[]>('mock_players', initialPlayers);
 
-    const tournamentIds = userTournaments?.map(t => t.id) || [];
+    const teamsWithDetails = allTeams.map(team => {
+      const tournament = allTournaments.find(t => t.id === team.tournament_id);
+      const playersCount = allPlayers.filter(p => p.team_id === team.id).length;
+      return {
+        ...team,
+        tournament: tournament ? { name: tournament.name } : undefined,
+        players_count: playersCount
+      };
+    });
 
-    if (tournamentIds.length === 0) {
-      setLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('teams')
-      .select(`
-        *,
-        tournament:tournaments(name)
-      `)
-      .in('tournament_id', tournamentIds);
-
-    if (!error && data) {
-      // Get player counts for each team
-      const teamsWithCounts = await Promise.all(
-        data.map(async (team) => {
-          const { count } = await supabase
-            .from('players')
-            .select('*', { count: 'exact', head: true })
-            .eq('team_id', team.id);
-          return { ...team, players_count: count || 0 };
-        })
-      );
-      setTeams(teamsWithCounts);
-    }
+    setTeams(teamsWithDetails);
     setLoading(false);
   };
 
-  const handleCreateTeam = async () => {
+  const handleCreateTeam = () => {
     if (!newTeam.name || !newTeam.tournament_id) {
       toast({
         variant: 'destructive',
@@ -148,47 +120,39 @@ const Teams = () => {
       return;
     }
 
-    const { error } = await supabase.from('teams').insert({
+    const allTeams = getStoredData<MockTeam[]>('mock_teams', initialTeams);
+    const newTeamData: MockTeam = {
+      id: `team-${Date.now()}`,
       name: newTeam.name,
       short_name: newTeam.short_name || null,
+      logo_url: null,
       captain: newTeam.captain || null,
       coach: newTeam.coach || null,
-      tournament_id: newTeam.tournament_id
-    });
+      tournament_id: newTeam.tournament_id,
+      created_at: new Date().toISOString()
+    };
 
-    if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to create team'
-      });
-    } else {
-      toast({
-        title: 'Success',
-        description: 'Team created successfully'
-      });
-      setNewTeam({ name: '', short_name: '', captain: '', coach: '', tournament_id: '' });
-      setIsDialogOpen(false);
-      fetchTeams();
-    }
+    setStoredData('mock_teams', [...allTeams, newTeamData]);
+
+    toast({
+      title: 'Success',
+      description: 'Team created successfully'
+    });
+    setNewTeam({ name: '', short_name: '', captain: '', coach: '', tournament_id: '' });
+    setIsDialogOpen(false);
+    fetchTeams();
   };
 
-  const handleDeleteTeam = async (teamId: string) => {
-    const { error } = await supabase.from('teams').delete().eq('id', teamId);
+  const handleDeleteTeam = (teamId: string) => {
+    const allTeams = getStoredData<MockTeam[]>('mock_teams', initialTeams);
+    const updated = allTeams.filter(t => t.id !== teamId);
+    setStoredData('mock_teams', updated);
 
-    if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to delete team'
-      });
-    } else {
-      toast({
-        title: 'Success',
-        description: 'Team deleted successfully'
-      });
-      fetchTeams();
-    }
+    toast({
+      title: 'Success',
+      description: 'Team deleted successfully'
+    });
+    fetchTeams();
   };
 
   const filteredTeams = teams.filter(team => {
